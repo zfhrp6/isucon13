@@ -817,10 +817,10 @@ def moderate_handler(livestream_id: int) -> tuple[dict[str, Any], int]:
         c = conn.cursor(dictionary=True)
 
         # 配信者自身の配信に対するmoderateなのかを検証
-        sql = "SELECT * FROM livestreams WHERE id = %s AND user_id = %s"
+        sql = "SELECT COUNT(*) FROM livestreams WHERE id = %s AND user_id = %s"
         c.execute(sql, [livestream_id, user_id])
-        owned_livestreams = c.fetchall()
-        if owned_livestreams is None or len(owned_livestreams) == 0:
+        row = c.fetchone()
+        if row is None or row['COUNT(*)'] == 0:
             raise HttpException(
                 "A streamer can't moderate livestreams that other streamers own",
                 BAD_REQUEST,
@@ -840,40 +840,53 @@ def moderate_handler(livestream_id: int) -> tuple[dict[str, Any], int]:
         word_id = c.lastrowid
         # app.logger.info(f"word_id: {word_id}, word: {req['ng_word']}")
 
-        sql = "SELECT * FROM ng_words WHERE livestream_id = %s"
-        c.execute(sql, [livestream_id])
+        sql = "SELECT * FROM ng_words WHERE livestream_id = %s and id = %s"
+        c.execute(sql, [livestream_id, word_id])
         rows = c.fetchall()
         if rows is None:
             raise HttpException("failed to get NG words", INTERNAL_SERVER_ERROR)
         ngwords = [models.NGWord(**row) for row in rows]
 
+        sql = "SELECT id FROM livestream WHERE user_id = %s"
+        c.execute(sql, [user_id])
+        l_ids = [row['id'] for row in c.fetchall()]
+
         # NGワードにヒットする過去の投稿も全削除する
         for ngword in ngwords:
-            sql = "SELECT * FROM livecomments"
-            c.execute(sql)
-            rows = c.fetchall()
-            if rows is None:
-                app.logger.warn("failed to get livecomments")
-                raise HttpException(
-                    "failed to get livecomments",
-                    INTERNAL_SERVER_ERROR,
-                )
-            livecomments = [models.LiveCommentModel(**row) for row in rows]
+            if not l_ids:
+                break
+            # sql = "SELECT * FROM livecomments"
+            # c.execute(sql)
+            # rows = c.fetchall()
+            # if rows is None:
+            #     app.logger.warn("failed to get livecomments")
+            #     raise HttpException(
+            #         "failed to get livecomments",
+            #         INTERNAL_SERVER_ERROR,
+            #     )
+            # livecomments = [models.LiveCommentModel(**row) for row in rows]
 
-            for livecomment in livecomments:
-                # app.logger.info(f"delete: {livecomment}")
-                sql = """
-                    DELETE FROM livecomments
-                    WHERE
-                    id = %s AND
-                    (SELECT COUNT(*)
-                    FROM
-                    (SELECT %s AS text) AS texts
-                    INNER JOIN
-                    (SELECT CONCAT('%%', %s, '%%')	AS pattern) AS patterns
-                    ON texts.text LIKE patterns.pattern) >= 1;
-                """
-                c.execute(sql, [livecomment.id, livecomment.comment, ngword.word])
+            # for livecomment in livecomments:
+            #     # app.logger.info(f"delete: {livecomment}")
+            #     sql = """
+            #         DELETE FROM livecomments
+            #         WHERE
+            #         id = %s AND
+            #         (SELECT COUNT(*)
+            #         FROM
+            #         (SELECT %s AS text) AS texts
+            #         INNER JOIN
+            #         (SELECT CONCAT('%%', %s, '%%')	AS pattern) AS patterns
+            #         ON texts.text LIKE patterns.pattern) >= 1;
+            #     """
+            #     c.execute(sql, [livecomment.id, livecomment.comment, ngword.word])
+            sql = """
+                DELETE FROM livecomments lc
+                WHERE 
+                lc.livestream_id IN (%s)
+                """ % in_format(l_ids)
+            sql += " AND lc.comment LIKE CONCAT('%%', %s, '%%')"
+            c.execute(sql, l_ids + [ngword.word])
         return asdict(models.ModerateResponse(word_id=word_id)), CREATED
     except DatabaseError as err:
         conn.rollback()
