@@ -1812,6 +1812,8 @@ def fill_all_user_response_1q(
     # else:
     #     image = io.BytesIO(image_row["image"]).getvalue()
     # icon_hash = hashlib.sha256(image).hexdigest()
+    fallback_image = open(Settings.FALLBACK_IMAGE, 'rb').read()
+    fallback_image_hash = hashlib.sha256(fallback_image).hexdigest()
     image_dict = {}
     for row in image_rows:
         image = io.BytesIO(row['image']).getvalue()
@@ -1824,7 +1826,7 @@ def fill_all_user_response_1q(
             display_name=u.display_name,
             description=u.description,
             theme=theme_models[u.id],
-            icon_hash=image_dict[u.id][1],
+            icon_hash=image_dict.get(u.id, (0, fallback_image_hash))[1],
         )
         for u in user_models
     }
