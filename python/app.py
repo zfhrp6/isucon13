@@ -1740,25 +1740,30 @@ def all_user_response(
     c.execute(sql, user_ids)
     image_rows = c.fetchall()
     image_dict = {}
+    fallback_image = open(Settings.FALLBACK_IMAGE, "rb").read()
+    fallback_image_hash = hashlib.sha256(fallback_image).hexdigest()
     for image_row in image_rows:
         if not image_rows:
-            image = open(Settings.FALLBACK_IMAGE, "rb").read()
+            icon_hash = fallback_image_hash
         else:
             image = io.BytesIO(image_row["image"]).getvalue()
-        icon_hash = hashlib.sha256(image).hexdigest()
+            icon_hash = hashlib.sha256(image).hexdigest()
         image_dict[image_row['user_id']] = icon_hash
 
-    users = [models.User(
-        id=user_model.id,
-        name=user_model.name,
-        display_name=user_model.display_name,
-        description=user_model.description,
-        theme=models.Theme(
-            id=theme_dict[user_model.id].id,
-            dark_mode=theme_dict[user_model.id].dark_mode),
-        icon_hash=image_dict[user_model.id],
-    )
-    for user_model in user_models]
+    try: 
+        users = [models.User(
+            id=user_model.id,
+            name=user_model.name,
+            display_name=user_model.display_name,
+            description=user_model.description,
+            theme=models.Theme(
+                id=theme_dict[user_model.id].id,
+                dark_mode=theme_dict[user_model.id].dark_mode),
+            icon_hash=image_dict[user_model.id],
+        )
+        for user_model in user_models]
+    except KeyError:
+        raise HttpException("not found", NOT_FOUND)
 
     return users
 
