@@ -29,6 +29,11 @@ from mysql.connector.errors import DatabaseError
 from sqlalchemy import create_engine
 
 
+def in_format(seq):
+    in_formats = ",".join(["%s"] * len(seq))
+    return in_formats
+
+
 class Settings(object):
     LISTEN_PORT = 8080
 
@@ -231,7 +236,7 @@ def reserve_livestream_handler() -> tuple[dict[str, Any], int]:
                 sql = "INSERT INTO livestream_tags (livestream_id, tag_id) VALUES (%s, %s)"
                 c.execute(sql, [livestream_model.id, tag_id])
 
-        livestream = fill_livestream_response(c, livestream_model)
+        livestream = fill_livestream_response_1q(c, livestream_model)
         if not livestream:
             raise HttpException("failed to fill livestream", INTERNAL_SERVER_ERROR)
 
@@ -267,8 +272,7 @@ def search_livestreams_handler() -> tuple[list[dict[str, Any]], int]:
             tag_ids = [row["id"] for row in rows]
 
             sql = "SELECT * FROM livestream_tags WHERE tag_id IN (%s) ORDER BY livestream_id DESC"  # idかtag_idか要確認
-            in_formats = ",".join(["%s"] * len(tag_ids))
-            sql = sql % in_formats
+            sql = sql % in_format(tag_ids)
             c.execute(sql, tag_ids)
             rows = c.fetchall()
             if rows is None:
@@ -302,14 +306,15 @@ def search_livestreams_handler() -> tuple[list[dict[str, Any]], int]:
             rows = c.fetchall()
             livestream_models = [models.LiveStreamModel(**row) for row in rows]
 
-        livestreams = []
-        for livestream_model in livestream_models:
-            livestream = fill_livestream_response(c, livestream_model)
-            if not livestream:
-                raise HttpException("error", INTERNAL_SERVER_ERROR)
+        # livestreams = []
+        # for livestream_model in livestream_models:
+        #     livestream = fill_livestream_response_1q(c, livestream_model)
+        #     if not livestream:
+        #         raise HttpException("error", INTERNAL_SERVER_ERROR)
 
-            # HTTPレスポンスに使うのでasdictしてからリストに突っ込む
-            livestreams.append(asdict(livestream))
+        #     # HTTPレスポンスに使うのでasdictしてからリストに突っ込む
+        #     livestreams.append(asdict(livestream))
+        livestreams = [asdict(m) for m in fill_all_livestream_response_1q(c, livestream_models)]
 
         return livestreams, OK
     except DatabaseError as err:
@@ -348,7 +353,7 @@ def get_my_livestreams_handler() -> tuple[list[dict[str, Any]], int]:
 
         livestreams = []
         for livestream_model in livestream_models:
-            livestream = fill_livestream_response(c, livestream_model)
+            livestream = fill_livestream_response_1q(c, livestream_model)
             if not livestream:
                 raise HttpException(
                     "failed to fill livestream",
@@ -394,7 +399,7 @@ def get_user_livestreams_handler(username: str) -> tuple[list[dict[str, Any]], i
 
         livestreams = []
         for livestream_model in livestream_models:
-            livestream = fill_livestream_response(c, livestream_model)
+            livestream = fill_livestream_response_1q(c, livestream_model)
             if not livestream:
                 raise HttpException(
                     "failed to fill livestream",
@@ -428,7 +433,7 @@ def get_livestream_handler(livestream_id: int) -> tuple[dict[str, Any], int]:
             raise HttpException("not found", NOT_FOUND)
         livestream_model = models.LiveStreamModel(**row)
 
-        livestream = fill_livestream_response(c, livestream_model)
+        livestream = fill_livestream_response_1q(c, livestream_model)
         return asdict(livestream), OK
     except DatabaseError as err:
         conn.rollback()
@@ -1534,7 +1539,7 @@ def fill_livecomment_response(
 
     livestream_model = models.LiveStreamModel(**row)
 
-    livestream = fill_livestream_response(c, livestream_model)
+    livestream = fill_livestream_response_1q(c, livestream_model)
 
     return models.LiveComment(
         id=livecomment_model.id,
@@ -1568,7 +1573,7 @@ def fill_reaction_response(
         raise HttpException("livestream_model", INTERNAL_SERVER_ERROR)
     livestream_model = models.LiveStreamModel(**row)
 
-    livestream = fill_livestream_response(c, livestream_model)
+    livestream = fill_livestream_response_1q(c, livestream_model)
 
     return models.Reaction(
         id=reaction_model.id,
@@ -1609,7 +1614,7 @@ def fill_livecomment_report_response(
     )
 
 
-def fill_livestream_response(
+def fill_livestream_response_1q(
     c: mysql.connector.cursor.MySQLCursorDict,
     livestream_model: models.LiveStreamModel,
 ) -> models.LiveStream:
@@ -1646,6 +1651,47 @@ def fill_livestream_response(
     return livestream
 
 
+def fill_all_livestream_response_1q(
+    c: mysql.connector.cursor.MySQLCursorDict,
+    livestream_models: list[models.LiveStreamModel],
+) -> list[models.LiveStream]:
+    user_ids = list({l.user_id for l in livestream_models})
+    sql = "SELECT * FROM users WHERE id IN (%s)" % in_format(user_ids)
+    c.execute(sql, user_ids)
+    rows = c.fetchall()
+    if not rows:
+        raise HttpException("failed to get owner_model", INTERNAL_SERVER_ERROR)
+    owner_models = {row['id']: models.UserModel(**row) for row in rows}
+
+    owners = all_user_response(c, owner_models.values())
+
+    livestream_ids = [l.id for l in livestream_models] 
+    sql = """
+    SELECT lt.livestream_id, t.* FROM livestream_tags as lt
+    JOIN tags as t ON lt.tag_id = t.id
+    WHERE livestream_id IN (%s)
+    """ % in_format(livestream_ids)
+    c.execute(sql,livestream_ids)
+    rows = c.fetchall()
+
+    # tags = [models.Tag(**row) for row in rows]
+    tags = {}
+    for row in rows:
+        tags[row.livestream_id] = models.Tag(row.id, row.name)
+
+    livestreams = [models.LiveStream(
+        id=livestream_model.id,
+        owner=owners[livestream_model.user_id],
+        title=livestream_model.title,
+        tags=tags,
+        description=livestream_model.description,
+        playlist_url=livestream_model.playlist_url,
+        thumbnail_url=livestream_model.thumbnail_url,
+        start_at=livestream_model.start_at,
+        end_at=livestream_model.end_at,
+    ) for livestream_model in livestream_models]
+    return livestreams
+
 def fill_user_response(
     c: mysql.connector.cursor.MySQLCursorDict, user_model: models.UserModel
 ) -> models.User:
@@ -1676,6 +1722,45 @@ def fill_user_response(
 
     return user
 
+
+def all_user_response(
+    c: mysql.connector.cursor.MySQLCursorDict,
+    user_models: [models.UserModel]
+) -> dict[int, models.User]:
+    user_ids = list({m.id for m in user_models})
+    sql = "SELECT * FROM themes WHERE user_id IN (%s)" % in_format(user_ids)
+    c.execute(sql, user_ids)
+    rows = c.fetchall()
+    if not rows:
+        raise HttpException("not found", NOT_FOUND)
+    theme_dict = {r['user_id']: models.ThemeModel(r) for r in rows}
+    # theme_model = models.ThemeModel(**row)
+
+    sql = "SELECT image FROM icons WHERE user_id IN (%s)" % in_format(user_ids)
+    c.execute(sql, user_ids)
+    image_rows = c.fetchall()
+    image_dict = {}
+    for image_row in image_rows:
+        if not image_rows:
+            image = open(Settings.FALLBACK_IMAGE, "rb").read()
+        else:
+            image = io.BytesIO(image_row["image"]).getvalue()
+        icon_hash = hashlib.sha256(image).hexdigest()
+        image_dict[image_row['user_id']] = icon_hash
+
+    users = [models.User(
+        id=user_model.id,
+        name=user_model.name,
+        display_name=user_model.display_name,
+        description=user_model.description,
+        theme=models.Theme(
+            id=theme_dict[user_model.id].id,
+            dark_mode=theme_dict[user_model.id].dark_mode),
+        icon_hash=image_dict[user_model.id],
+    )
+    for user_model in user_models]
+
+    return users
 
 # Content-Type付けてこないクライアントからのJSONリクエストボディを
 # いい感じに受け取れるようにするやつ
