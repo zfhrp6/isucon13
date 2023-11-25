@@ -1689,7 +1689,8 @@ def fill_all_livestream_response_1q(
         thumbnail_url=livestream_model.thumbnail_url,
         start_at=livestream_model.start_at,
         end_at=livestream_model.end_at,
-    ) for livestream_model in livestream_models]
+    ) for livestream_model in livestream_models
+    if livestream_model.user_id in owners]
     return livestreams
 
 def fill_user_response(
