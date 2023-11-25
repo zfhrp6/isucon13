@@ -1622,8 +1622,9 @@ def fill_livestream_response(
     owner = fill_user_response(c, owner_model)
 
     sql = """
-    SELECT t.* FROM livestream_tags as lt WHERE livestream_id = %s
+    SELECT t.* FROM livestream_tags as lt
     JOIN tags as t ON lt.tag_id = t.tag_id
+    WHERE livestream_id = %s
     """
     c.execute(sql, [livestream_model.id])
     rows = c.fetchall()
