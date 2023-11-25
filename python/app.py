@@ -1559,6 +1559,7 @@ def fill_all_livecomment_responses(
 ) -> dict[int, models.LiveComment]:
     user_ids = list({l.user_id for l in livecomment_models})
     sql = "SELECT * FROM users WHERE id IN (%s)" % in_format(user_ids)
+    print(user_ids, file=sys.stderr)
     c.execute(sql, user_ids)
     users = c.fetchall()
     if not users:
