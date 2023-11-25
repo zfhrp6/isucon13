@@ -511,7 +511,7 @@ def post_livecomment_handler(livestream_id: int) -> tuple[dict[str, Any], int]:
             raise HttpException("failed to get NG words", INTERNAL_SERVER_ERROR)
 
         for ng_word in ng_words:
-            if req['comment'] in ng_word['word']:
+            if ng_word['word'] in req['comment']:
             # sql = """
             #         SELECT COUNT(*)
             #         FROM (SELECT %s AS text) AS texts
