@@ -1677,7 +1677,7 @@ def fill_all_livestream_response_1q(
     # tags = [models.Tag(**row) for row in rows]
     tags = {}
     for row in rows:
-        tags[row.livestream_id] = models.Tag(**row)
+        tags[row.livestream_id] = models.Tag(id=row['id'], name=row['name'])
 
     livestreams = [models.LiveStream(
         id=livestream_model.id,
