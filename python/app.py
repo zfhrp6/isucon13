@@ -513,10 +513,8 @@ def post_livecomment_handler(livestream_id: int) -> tuple[dict[str, Any], int]:
         for ng_word in ng_words:
             sql = """
                     SELECT COUNT(*)
-                    FROM
-                    (SELECT %s AS text) AS texts
-                    INNER JOIN
-                    (SELECT CONCAT('%%', %s, '%%')	AS pattern) AS patterns
+                    FROM (SELECT %s AS text) AS texts
+                    INNER JOIN (SELECT CONCAT('%%', %s, '%%') AS pattern) AS patterns
                     ON texts.text LIKE patterns.pattern;
                 """
             c.execute(sql, [req["comment"], ng_word["word"]])
@@ -1623,19 +1621,23 @@ def fill_livestream_response(
 
     owner = fill_user_response(c, owner_model)
 
-    sql = "SELECT * FROM livestream_tags WHERE livestream_id = %s"
+    sql = """
+    SELECT t.* FROM livestream_tags as lt WHERE livestream_id = %s
+    JOIN tags as t ON lt.tag_id = t.tag_id
+    """
     c.execute(sql, [livestream_model.id])
     rows = c.fetchall()
 
     tags = []
     for row in rows:
-        livestream_tag = models.LiveStreamTagModel(**row)
-        sql = "SELECT * FROM tags WHERE id = %s"
-        c.execute(sql, [livestream_tag.tag_id])
-        tag_row = c.fetchone()
-        if not tag_row:
-            raise HttpException("failed to get tags", INTERNAL_SERVER_ERROR)
-        tag = models.Tag(**tag_row)
+        # livestream_tag = models.LiveStreamTagModel(**row)
+        # sql = "SELECT * FROM tags WHERE id = %s"
+        # c.execute(sql, [livestream_tag.tag_id])
+        # tag_row = c.fetchone()
+        # if not tag_row:
+        #     raise HttpException("failed to get tags", INTERNAL_SERVER_ERROR)
+        # tag = models.Tag(**tag_row)
+        tag = models.Tag(**row)
         tags.append(tag)
 
     livestream = models.LiveStream(
