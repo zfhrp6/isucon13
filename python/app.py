@@ -1337,6 +1337,11 @@ def post_icon_handler() -> tuple[dict[str, Any], int]:
 
         sql = "INSERT INTO icons (user_id, image) VALUES (%s, %s)"
         c.execute(sql, [user_id, new_icon])
+    
+        icon_hash = hashlib.sha256(new_icon).hexdigest()
+
+        sql = "UPDATE users SET icon_hash = %s WHERE user_id = %s"
+        c.execute(sql, [icon_hash, user_id])
 
         icon_id = c.lastrowid
         return {"id": icon_id}, CREATED
