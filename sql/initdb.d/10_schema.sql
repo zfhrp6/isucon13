@@ -66,7 +66,8 @@ CREATE TABLE `livestream_tags` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `livestream_id` BIGINT NOT NULL,
   `tag_id` BIGINT NOT NULL,
-  INDEX `i_livestream_tags_1` (`livestream_id`)
+  INDEX `i_livestream_tags_1` (`livestream_id`),
+  INDEX `i_livestream_tags_2` (`tag_id`, `livestream_id`)
 ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
 
 -- ライブ配信視聴履歴
@@ -87,7 +88,7 @@ CREATE TABLE `livecomments` (
   `tip` BIGINT NOT NULL DEFAULT 0,
   `created_at` BIGINT NOT NULL,
   INDEX `i_livecomments_1` (`user_id`),
-  INDEX `i_livecomments_2` (`livestream_id`),
+  INDEX `i_livecomments_2` (`livestream_id`, `tip`),
   INDEX `i_livecomments_3` (`created_at` DESC)
 ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
 
