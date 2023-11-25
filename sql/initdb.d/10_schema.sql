@@ -8,6 +8,7 @@ CREATE TABLE `users` (
   `password` VARCHAR(255) NOT NULL,
   `description` TEXT NOT NULL,
   UNIQUE `uniq_user_name` (`name`)
+  INDEX `i_users_1` (`name`)
 ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
 
 -- プロフィール画像
