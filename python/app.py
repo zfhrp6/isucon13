@@ -1733,7 +1733,7 @@ def all_user_response(
     rows = c.fetchall()
     if not rows:
         raise HttpException("not found", NOT_FOUND)
-    theme_dict = {r['user_id']: models.ThemeModel(r) for r in rows}
+    theme_dict = {r['user_id']: models.ThemeModel(**r) for r in rows}
     # theme_model = models.ThemeModel(**row)
 
     sql = "SELECT image FROM icons WHERE user_id IN (%s)" % in_format(user_ids)
