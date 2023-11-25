@@ -88,7 +88,7 @@ CREATE TABLE `livecomments` (
   `tip` BIGINT NOT NULL DEFAULT 0,
   `created_at` BIGINT NOT NULL,
   INDEX `i_livecomments_1` (`user_id`),
-  INDEX `i_livecomments_2` (`livestream_id`),
+  INDEX `i_livecomments_2` (`livestream_id`, `tip`),
   INDEX `i_livecomments_3` (`created_at` DESC)
 ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
 
