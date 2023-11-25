@@ -1801,7 +1801,7 @@ def fill_all_user_response_1q(
     rows = c.fetchall()
     if rows is None:
         raise HttpException("not found", NOT_FOUND)
-    theme_models = {row['id']: models.ThemeModel(**row) for row in rows}
+    theme_models = {row['user_id']: models.ThemeModel(**row) for row in rows}
     # theme_model = models.ThemeModel(**row)
 
     sql = "SELECT user_id, image FROM icons WHERE user_id IN (%s)" % in_format(user_ids)
