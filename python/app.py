@@ -1749,21 +1749,20 @@ def all_user_response(
             image = io.BytesIO(image_row["image"]).getvalue()
             icon_hash = hashlib.sha256(image).hexdigest()
         image_dict[image_row['user_id']] = icon_hash
+    print(image_dict)
 
-    try: 
-        users = [models.User(
-            id=user_model.id,
-            name=user_model.name,
-            display_name=user_model.display_name,
-            description=user_model.description,
-            theme=models.Theme(
-                id=theme_dict[user_model.id].id,
-                dark_mode=theme_dict[user_model.id].dark_mode),
-            icon_hash=image_dict[user_model.id],
-        )
-        for user_model in user_models]
-    except KeyError:
-        raise HttpException("not found", NOT_FOUND)
+    users = [models.User(
+        id=user_model.id,
+        name=user_model.name,
+        display_name=user_model.display_name,
+        description=user_model.description,
+        theme=models.Theme(
+            id=theme_dict[user_model.id].id,
+            dark_mode=theme_dict[user_model.id].dark_mode),
+        icon_hash=image_dict[user_model.id],
+    )
+    for user_model in user_models
+    if user_model.id in image_dict]
 
     return users
 
