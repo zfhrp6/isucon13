@@ -57,7 +57,8 @@ CREATE TABLE `reservation_slots` (
 CREATE TABLE `tags` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `name` VARCHAR(255) NOT NULL,
-  UNIQUE `uniq_tag_name` (`name`)
+  UNIQUE `uniq_tag_name` (`name`),
+  INDEX `i_tags_1` (`name`)
 ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
 
 -- ライブ配信とタグの中間テーブル
