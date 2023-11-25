@@ -1577,7 +1577,8 @@ def fill_all_livecomment_responses(
         raise HttpException("failed to get comment_owner_model", INTERNAL_SERVER_ERROR)
     comment_owner_models = {row['id']: models.UserModel(**row) for row in users}
 
-    comment_owners = {co.id: fill_user_response_1q(c, co) for co in comment_owner_models.values()}
+    comment_owners = fill_all_user_response_1q(c, comment_owner_models.values())
+    # comment_owners = {co.id: fill_user_response_1q(c, co) for co in comment_owner_models.values()}
 
     livestream_ids = list({l.livestream_id for l in livecomment_models})
     if not livestream_ids:
@@ -1786,6 +1787,51 @@ def fill_user_response_1q(
     )
 
     return user
+
+
+def fill_all_user_response_1q(
+    c: mysql.connector.cursor.MySQLCursorDict,
+    user_models: list[models.UserModel],
+) -> models.User:
+    user_ids = list({u.id for u in user_models})
+    if not user_ids:
+        return {}
+    sql = "SELECT * FROM themes WHERE user_id IN (%s)" % in_format(user_ids)
+    c.execute(sql, user_ids)
+    rows = c.fetchall()
+    if rows is None:
+        raise HttpException("not found", NOT_FOUND)
+    theme_models = {row['user_id']: models.ThemeModel(**row) for row in rows}
+    # theme_model = models.ThemeModel(**row)
+
+    sql = "SELECT user_id, image FROM icons WHERE user_id IN (%s)" % in_format(user_ids)
+    c.execute(sql, user_ids)
+    image_rows = c.fetchall()
+    # if not image_rows:
+    #     image = open(Settings.FALLBACK_IMAGE, "rb").read()
+    # else:
+    #     image = io.BytesIO(image_row["image"]).getvalue()
+    # icon_hash = hashlib.sha256(image).hexdigest()
+    fallback_image = open(Settings.FALLBACK_IMAGE, 'rb').read()
+    fallback_image_hash = hashlib.sha256(fallback_image).hexdigest()
+    image_dict = {}
+    for row in image_rows:
+        image = io.BytesIO(row['image']).getvalue()
+        image_dict[row['user_id']] = (image, hashlib.sha256(image).hexdigest())
+
+    users = {
+        u.id: models.User(
+            id=u.id,
+            name=u.name,
+            display_name=u.display_name,
+            description=u.description,
+            theme=theme_models[u.id],
+            icon_hash=image_dict.get(u.id, (0, fallback_image_hash))[1],
+        )
+        for u in user_models
+    }
+
+    return users
 
 
 # Content-Type付けてこないクライアントからのJSONリクエストボディを
