@@ -1751,7 +1751,7 @@ def all_user_response(
         image_dict[image_row['user_id']] = icon_hash
     print(image_dict)
 
-    users = [models.User(
+    users = {user_model.id: models.User(
         id=user_model.id,
         name=user_model.name,
         display_name=user_model.display_name,
@@ -1762,7 +1762,7 @@ def all_user_response(
         icon_hash=image_dict[user_model.id],
     )
     for user_model in user_models
-    if user_model.id in image_dict]
+    if user_model.id in image_dict}
 
     return users
 
