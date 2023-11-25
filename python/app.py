@@ -28,6 +28,10 @@ from flask import Flask, Response, request, send_file, session
 from mysql.connector.errors import DatabaseError
 from sqlalchemy import create_engine
 
+def in_format(seq):
+    in_formats = ",".join(["%s"] * len(seq))
+    return in_formats
+
 
 class Settings(object):
     LISTEN_PORT = 8080
@@ -231,7 +235,7 @@ def reserve_livestream_handler() -> tuple[dict[str, Any], int]:
                 sql = "INSERT INTO livestream_tags (livestream_id, tag_id) VALUES (%s, %s)"
                 c.execute(sql, [livestream_model.id, tag_id])
 
-        livestream = fill_livestream_response(c, livestream_model)
+        livestream = fill_livestream_response_1q(c, livestream_model)
         if not livestream:
             raise HttpException("failed to fill livestream", INTERNAL_SERVER_ERROR)
 
@@ -267,8 +271,7 @@ def search_livestreams_handler() -> tuple[list[dict[str, Any]], int]:
             tag_ids = [row["id"] for row in rows]
 
             sql = "SELECT * FROM livestream_tags WHERE tag_id IN (%s) ORDER BY livestream_id DESC"  # idかtag_idか要確認
-            in_formats = ",".join(["%s"] * len(tag_ids))
-            sql = sql % in_formats
+            sql = sql % in_format(tag_ids)
             c.execute(sql, tag_ids)
             rows = c.fetchall()
             if rows is None:
@@ -304,7 +307,7 @@ def search_livestreams_handler() -> tuple[list[dict[str, Any]], int]:
 
         livestreams = []
         for livestream_model in livestream_models:
-            livestream = fill_livestream_response(c, livestream_model)
+            livestream = fill_livestream_response_1q(c, livestream_model)
             if not livestream:
                 raise HttpException("error", INTERNAL_SERVER_ERROR)
 
@@ -348,7 +351,7 @@ def get_my_livestreams_handler() -> tuple[list[dict[str, Any]], int]:
 
         livestreams = []
         for livestream_model in livestream_models:
-            livestream = fill_livestream_response(c, livestream_model)
+            livestream = fill_livestream_response_1q(c, livestream_model)
             if not livestream:
                 raise HttpException(
                     "failed to fill livestream",
@@ -394,7 +397,7 @@ def get_user_livestreams_handler(username: str) -> tuple[list[dict[str, Any]], i
 
         livestreams = []
         for livestream_model in livestream_models:
-            livestream = fill_livestream_response(c, livestream_model)
+            livestream = fill_livestream_response_1q(c, livestream_model)
             if not livestream:
                 raise HttpException(
                     "failed to fill livestream",
@@ -428,7 +431,7 @@ def get_livestream_handler(livestream_id: int) -> tuple[dict[str, Any], int]:
             raise HttpException("not found", NOT_FOUND)
         livestream_model = models.LiveStreamModel(**row)
 
-        livestream = fill_livestream_response(c, livestream_model)
+        livestream = fill_livestream_response_1q(c, livestream_model)
         return asdict(livestream), OK
     except DatabaseError as err:
         conn.rollback()
@@ -465,10 +468,14 @@ def get_livecomments_handler(livestream_id: int) -> tuple[list[dict[str, Any]], 
 
         livecomment_models = [models.LiveCommentModel(**row) for row in rows]
 
-        livecomments: list[dict[str, Any]] = []
-        for livecomment_model in livecomment_models:
-            livecomment = fill_livecomment_response(c, livecomment_model)
-            livecomments.append(asdict(livecomment))
+        # livecomments: list[dict[str, Any]] = []
+        # for livecomment_model in livecomment_models:
+        #     livecomment = fill_livecomment_response(c, livecomment_model)
+        #     livecomments.append(asdict(livecomment))
+        livecomments = [
+            asdict(lc) for lc in 
+            sorted(fill_all_livecomment_responses(c, livecomment_models).values(), key=lambda lc: lc.created_at, reverse=True)
+        ]
 
         return livecomments, OK
     except DatabaseError as err:
@@ -994,7 +1001,7 @@ def register_handler() -> tuple[dict[str, Any], int]:
             if result.returncode != 0:
                 raise HttpException(result.stdout, INTERNAL_SERVER_ERROR)
 
-        user = fill_user_response(c, user_model)
+        user = fill_user_response_1q(c, user_model)
         return asdict(user), CREATED
     except DatabaseError as err:
         conn.rollback()
@@ -1066,7 +1073,7 @@ def get_me_handler() -> tuple[dict[str, Any], int]:
         if not row:
             raise HttpException("failed to get user", INTERNAL_SERVER_ERROR)
         user_model = models.UserModel(**row)
-        user = fill_user_response(c, user_model)
+        user = fill_user_response_1q(c, user_model)
         return asdict(user), OK
     except DatabaseError as err:
         conn.rollback()
@@ -1094,7 +1101,7 @@ def get_user_handler(username: str) -> tuple[dict[str, Any], int]:
             raise HttpException("not found", NOT_FOUND)
         user_model = models.UserModel(**row)
 
-        user = fill_user_response(c, user_model)
+        user = fill_user_response_1q(c, user_model)
         return asdict(user), OK
     except DatabaseError as err:
         conn.rollback()
@@ -1523,7 +1530,7 @@ def fill_livecomment_response(
         raise HttpException("failed to get comment_owner_model", INTERNAL_SERVER_ERROR)
     comment_owner_model = models.UserModel(**row)
 
-    comment_owner = fill_user_response(c, comment_owner_model)
+    comment_owner = fill_user_response_1q(c, comment_owner_model)
 
     sql = "SELECT * FROM livestreams WHERE id = %s"
     c.execute(sql, [livecomment_model.livestream_id])
@@ -1534,7 +1541,7 @@ def fill_livecomment_response(
 
     livestream_model = models.LiveStreamModel(**row)
 
-    livestream = fill_livestream_response(c, livestream_model)
+    livestream = fill_livestream_response_1q(c, livestream_model)
 
     return models.LiveComment(
         id=livecomment_model.id,
@@ -1545,6 +1552,48 @@ def fill_livecomment_response(
         created_at=livecomment_model.created_at,
     )
 
+
+def fill_all_livecomment_responses(
+    c: mysql.connector.cursor.MySQLCursorDict,
+    livecomment_models: list[models.LiveCommentModel],
+) -> dict[int, models.LiveComment]:
+    user_ids = list({l.user_id for l in livecomment_models})
+    if not user_ids:
+        return {}
+    sql = "SELECT * FROM users WHERE id IN (%s)" % in_format(user_ids)
+    c.execute(sql, user_ids)
+    users = c.fetchall()
+    if not users:
+        app.logger.error("failed to get comment_owner_model")
+        raise HttpException("failed to get comment_owner_model", INTERNAL_SERVER_ERROR)
+    comment_owner_models = {row['id']: models.UserModel(**row) for row in users}
+
+    comment_owners = {co.id: fill_user_response_1q(c, co) for co in comment_owner_models.values()}
+
+    livestream_ids = list({l.livestream_id for l in livecomment_models})
+    if not livestream_ids:
+        return {}
+    sql = "SELECT * FROM livestreams WHERE id IN (%s)" % in_format(livestream_ids)
+    c.execute(sql, livestream_ids)
+    livestreams = c.fetchall()
+    if not livestreams:
+        app.logger.error("failed to get livestream_model")
+        raise HttpException("failed to get livestream_model", INTERNAL_SERVER_ERROR)
+
+    livestream_models = {row['id']: models.LiveStreamModel(**row) for row in livestreams}
+
+    livestreams = {ls.id: fill_livestream_response_1q(c, ls) for ls in livestream_models.values()}
+
+    return {
+        lc.id: models.LiveComment(
+            id=lc.id,
+            user=comment_owners[lc.user_id],
+            livestream=livestreams[lc.livestream_id],
+            comment=lc.comment,
+            tip=lc.tip,
+            created_at=lc.created_at,
+        )
+        for lc in livecomment_models}
 
 def fill_reaction_response(
     c: mysql.connector.cursor.MySQLCursorDict,
@@ -1558,7 +1607,7 @@ def fill_reaction_response(
         raise HttpException("failed to get user_model", INTERNAL_SERVER_ERROR)
     user_model = models.UserModel(**row)
 
-    user = fill_user_response(c, user_model)
+    user = fill_user_response_1q(c, user_model)
 
     sql = "SELECT * FROM livestreams WHERE id = %s"
     c.execute(sql, [reaction_model.livestream_id])
@@ -1568,7 +1617,7 @@ def fill_reaction_response(
         raise HttpException("livestream_model", INTERNAL_SERVER_ERROR)
     livestream_model = models.LiveStreamModel(**row)
 
-    livestream = fill_livestream_response(c, livestream_model)
+    livestream = fill_livestream_response_1q(c, livestream_model)
 
     return models.Reaction(
         id=reaction_model.id,
@@ -1590,7 +1639,7 @@ def fill_livecomment_report_response(
         raise HttpException("failed to get reporter user", INTERNAL_SERVER_ERROR)
     reporter_model = models.UserModel(**row)
 
-    reporter = fill_user_response(c, reporter_model)
+    reporter = fill_user_response_1q(c, reporter_model)
 
     sql = "SELECT * FROM livecomments WHERE id = %s"
     c.execute(sql, [report_model.livecomment_id])
@@ -1609,7 +1658,7 @@ def fill_livecomment_report_response(
     )
 
 
-def fill_livestream_response(
+def fill_livestream_response_1q(
     c: mysql.connector.cursor.MySQLCursorDict,
     livestream_model: models.LiveStreamModel,
 ) -> models.LiveStream:
@@ -1620,7 +1669,7 @@ def fill_livestream_response(
         raise HttpException("failed to get owner_model", INTERNAL_SERVER_ERROR)
     owner_model = models.UserModel(**row)
 
-    owner = fill_user_response(c, owner_model)
+    owner = fill_user_response_1q(c, owner_model)
 
     sql = """
     SELECT t.* FROM livestream_tags as lt
@@ -1646,7 +1695,7 @@ def fill_livestream_response(
     return livestream
 
 
-def fill_user_response(
+def fill_user_response_1q(
     c: mysql.connector.cursor.MySQLCursorDict, user_model: models.UserModel
 ) -> models.User:
     sql = "SELECT * FROM themes WHERE user_id = %s"
