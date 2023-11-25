@@ -148,6 +148,12 @@ func postIconHandler(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to insert new user icon: "+err.Error())
 	}
+	
+	icon_hash := sha256.Sum256(req.Image)
+
+	if _, err := tx.ExecContext(ctx, "UPDATE users SET icon_hash = ? WHERE user_id = ?", icon_hash, userID); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to delete old user icon: "+err.Error())
+	}
 
 	iconID, err := rs.LastInsertId()
 	if err != nil {
