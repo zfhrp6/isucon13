@@ -1623,7 +1623,7 @@ def fill_livestream_response(
 
     sql = """
     SELECT t.* FROM livestream_tags as lt
-    JOIN tags as t ON lt.tag_id = t.tag_id
+    JOIN tags as t ON lt.tag_id = t.id
     WHERE livestream_id = %s
     """
     c.execute(sql, [livestream_model.id])
