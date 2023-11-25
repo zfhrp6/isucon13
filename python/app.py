@@ -304,15 +304,24 @@ def search_livestreams_handler() -> tuple[list[dict[str, Any]], int]:
             c.execute(sql, args)
             rows = c.fetchall()
             livestream_models = [models.LiveStreamModel(**row) for row in rows]
+        
+        livestreams_dict = fill_all_livestream_response_1q(c, livestream_models)
+        livestreams = [
+            asdict(livestreams_dict[l.id]) for l in livestream_models
+        ]
 
-        livestreams = []
-        for livestream_model in livestream_models:
-            livestream = fill_livestream_response_1q(c, livestream_model)
-            if not livestream:
-                raise HttpException("error", INTERNAL_SERVER_ERROR)
 
-            # HTTPレスポンスに使うのでasdictしてからリストに突っ込む
-            livestreams.append(asdict(livestream))
+
+        # livestreams = []
+        # for livestream_model in livestream_models:
+        #     livestream = fill_livestream_response_1q(c, livestream_model)
+        #     if not livestream:
+        #         raise HttpException("error", INTERNAL_SERVER_ERROR)
+
+        #     # HTTPレスポンスに使うのでasdictしてからリストに突っ込む
+        #     livestreams.append(asdict(livestream))
+        
+
 
         return livestreams, OK
     except DatabaseError as err:
@@ -1693,6 +1702,59 @@ def fill_livestream_response_1q(
         end_at=livestream_model.end_at,
     )
     return livestream
+
+
+def fill_all_livestream_response_1q(
+    c: mysql.connector.cursor.MySQLCursorDict,
+    livestream_models: list[models.LiveStreamModel],
+) -> dict[int, models.LiveStream]:
+    user_ids = list({ls.user_id for ls in livestream_models})
+    ls_ids = list({ls.id for ls in livestream_models})
+    if not user_ids:
+        return {}
+    sql = "SELECT * FROM users WHERE id IN (%s)" % in_format(user_ids)
+    c.execute(sql, user_ids)
+    rows = c.fetchall()
+    if not rows:
+        raise HttpException("failed to get owner_model", INTERNAL_SERVER_ERROR)
+    owner_models = {row['id']: fill_user_response_1q(c, models.UserModel(**row)) for row in rows}
+
+    # owners = {o.id: fill_user_response_1q(c, o) for o in owner_models.values()}
+
+    sql = """
+    SELECT lt.livestream_id, t.* FROM livestream_tags as lt
+    JOIN tags as t ON lt.tag_id = t.id
+    WHERE livestream_id IN (%s)
+    """ % in_format(ls_ids)
+    c.execute(sql, ls_ids)
+    rows = c.fetchall()
+
+    tags = {}
+    for row in rows:
+        l_id = row['livestream_id']
+        if l_id in tags:
+            tags[l_id].append(models.Tag(id=row['id'], name=row['name']))
+        else:
+            tags[l_id] = [models.Tag(id=row['id'], name=row['name'])]
+
+
+    # tags = [models.Tag(**row) for row in rows]
+
+    livestreams = {
+        l.id: models.LiveStream(
+            id=l.id,
+            owner=owner_models[l.user_id],
+            title=l.title,
+            tags=tags.get(l.id, []),
+            description=l.description,
+            playlist_url=l.playlist_url,
+            thumbnail_url=l.thumbnail_url,
+            start_at=l.start_at,
+            end_at=l.end_at,
+        )
+        for l in livestream_models
+    }
+    return livestreams
 
 
 def fill_user_response_1q(
