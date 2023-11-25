@@ -1558,8 +1558,9 @@ def fill_all_livecomment_responses(
     livecomment_models: list[models.LiveCommentModel],
 ) -> dict[int, models.LiveComment]:
     user_ids = list({l.user_id for l in livecomment_models})
+    if not user_ids:
+        return {}
     sql = "SELECT * FROM users WHERE id IN (%s)" % in_format(user_ids)
-    print(user_ids, file=sys.stderr)
     c.execute(sql, user_ids)
     users = c.fetchall()
     if not users:
@@ -1570,6 +1571,8 @@ def fill_all_livecomment_responses(
     comment_owners = {co.id: fill_user_response_1q(c, co) for co in comment_owner_models.values()}
 
     livestream_ids = list({l.livestream_id for l in livecomment_models})
+    if not livestream_ids:
+        return {}
     sql = "SELECT * FROM livestreams WHERE id IN (%s)" % in_format(livestream_ids)
     c.execute(sql, livestream_ids)
     livestreams = c.fetchall()
