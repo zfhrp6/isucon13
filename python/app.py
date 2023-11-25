@@ -1336,8 +1336,11 @@ def post_icon_handler() -> tuple[dict[str, Any], int]:
 
         sql = "INSERT INTO icons (user_id, image) VALUES (%s, %s)"
         c.execute(sql, [user_id, new_icon])
-
         icon_id = c.lastrowid
+
+        sql = "SELECT image into dumpfile ./%s from icons"
+        c.execute(sql, [icon_id])
+
         return {"id": icon_id}, CREATED
     except DatabaseError as err:
         conn.rollback()
